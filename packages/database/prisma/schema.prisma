@@ -1,0 +1,469 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  VIEWER
+  CREATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum WindowType {
+  FESTIVAL
+  CINEMA
+  PVOD
+  PPV
+  TVOD
+  SVOD
+  AVOD
+  COLLECTOR
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum FilmStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TranscodingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String
+  phone           String?
+  passwordHash    String
+  role            UserRole  @default(VIEWER)
+  walletAddress   String?   @unique
+  emailVerified   Boolean   @default(false)
+  mfaEnabled      Boolean   @default(false)
+  mfaSecret       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastLoginAt     DateTime?
+
+  profiles        Profile[]
+  subscriptions   Subscription[]
+  transactions    Transaction[]
+  watchHistory    WatchHistory[]
+  myList          MyList[]
+  devices         Device[]
+  sessions        Session[]
+  createdFilms    Film[]    @relation("CreatorFilms")
+
+  @@index([email])
+  @@index([walletAddress])
+}
+
+model Profile {
+  id              String    @id @default(cuid())
+  userId          String
+  name            String
+  avatarUrl       String?
+  isKids          Boolean   @default(false)
+  pin             String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  watchHistory    WatchHistory[]
+
+  @@index([userId])
+}
+
+model Session {
+  id              String    @id @default(cuid())
+  userId          String
+  token           String    @unique
+  deviceId        String?
+  ipAddress       String?
+  userAgent       String?
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Device {
+  id              String    @id @default(cuid())
+  userId          String
+  deviceId        String    @unique
+  deviceName      String
+  deviceType      String
+  lastUsedAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playbackLogs    PlaybackLog[]
+
+  @@index([userId])
+}
+
+model Film {
+  id                  String        @id @default(cuid())
+  title               String
+  slug                String        @unique
+  description         String        @db.Text
+  longDescription     String?       @db.Text
+  language            String        @default("en")
+  subtitles           String[]
+  runtime             Int
+  releaseYear         Int?
+  rating              String?
+  posterUrl           String?
+  backdropUrl         String?
+  trailerUrl          String?
+  masterFilePath      String?
+  version             String?       @default("standard")
+  status              FilmStatus    @default(DRAFT)
+  creatorId           String
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  publishedAt         DateTime?
+
+  creator             User          @relation("CreatorFilms", fields: [creatorId], references: [id])
+  genres              FilmGenre[]
+  windows             Window[]
+  assets              FilmAsset[]
+  royaltyRules        RoyaltyRule[]
+  transactions        Transaction[]
+  watchHistory        WatchHistory[]
+  myList              MyList[]
+  recommendations     Recommendation[]
+  transcodingJobs     TranscodingJob[]
+  nftEditions         NFTEdition[]
+
+  @@index([slug])
+  @@index([creatorId])
+  @@index([status])
+}
+
+model Genre {
+  id              String        @id @default(cuid())
+  name            String        @unique
+  slug            String        @unique
+  description     String?
+
+  films           FilmGenre[]
+}
+
+model FilmGenre {
+  filmId          String
+  genreId         String
+
+  film            Film          @relation(fields: [filmId], references: [id], onDelete: Cascade)
+  genre           Genre         @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([filmId, genreId])
+}
+
+model FilmAsset {
+  id              String    @id @default(cuid())
+  filmId          String
+  type            String
+  url             String
+  quality         String?
+  fileSize        BigInt?
+  duration        Int?
+  createdAt       DateTime  @default(now())
+
+  film            Film      @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@index([filmId])
+}
+
+model Window {
+  id              String      @id @default(cuid())
+  filmId          String
+  windowType      WindowType
+  startDate       DateTime
+  endDate         DateTime?
+  territories     String[]    @default(["GLOBAL"])
+  price           Float?
+  currency        String      @default("USD")
+  rentalDuration  Int?
+  drmEnabled      Boolean     @default(true)
+  maxStreams      Int         @default(1)
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  film            Film        @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@index([filmId])
+  @@index([windowType])
+  @@index([startDate, endDate])
+}
+
+model Subscription {
+  id              String      @id @default(cuid())
+  userId          String
+  planId          String
+  status          String
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean   @default(false)
+  stripeSubscriptionId String? @unique
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@index([userId])
+  @@index([planId])
+}
+
+model SubscriptionPlan {
+  id              String        @id @default(cuid())
+  name            String
+  description     String?
+  price           Float
+  currency        String        @default("USD")
+  interval        String
+  features        String[]
+  maxStreams      Int           @default(1)
+  maxProfiles     Int           @default(1)
+  adFree          Boolean       @default(true)
+  isActive        Boolean       @default(true)
+  territories     String[]      @default(["GLOBAL"])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  subscriptions   Subscription[]
+}
+
+model Transaction {
+  id              String            @id @default(cuid())
+  userId          String
+  filmId          String?
+  windowType      WindowType?
+  amount          Float
+  currency        String            @default("USD")
+  status          TransactionStatus @default(PENDING)
+  paymentProvider String
+  paymentId       String?
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  film            Film?             @relation(fields: [filmId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([filmId])
+  @@index([status])
+}
+
+model RoyaltyRule {
+  id                      String    @id @default(cuid())
+  filmId                  String
+  producerPercentage      Float     @default(70)
+  distributorPercentage   Float     @default(20)
+  platformPercentage      Float     @default(10)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  film                    Film      @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@index([filmId])
+}
+
+model PlaybackLog {
+  id              String    @id @default(cuid())
+  userId          String
+  filmId          String
+  deviceId        String
+  sessionId       String
+  startTime       DateTime  @default(now())
+  endTime         DateTime?
+  position        Int       @default(0)
+  duration        Int?
+  quality         String?
+  bandwidth       Float?
+  ipAddress       String?
+  country         String?
+
+  device          Device    @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([filmId])
+  @@index([sessionId])
+}
+
+model WatchHistory {
+  id              String    @id @default(cuid())
+  userId          String
+  profileId       String
+  filmId          String
+  position        Int       @default(0)
+  completed       Boolean   @default(false)
+  lastWatchedAt   DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile         Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  film            Film      @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, filmId])
+  @@index([userId])
+  @@index([profileId])
+  @@index([filmId])
+}
+
+model MyList {
+  id              String    @id @default(cuid())
+  userId          String
+  filmId          String
+  addedAt         DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  film            Film      @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, filmId])
+  @@index([userId])
+}
+
+model Recommendation {
+  id              String    @id @default(cuid())
+  filmId          String
+  recommendedFilmId String
+  score           Float
+  reason          String?
+  createdAt       DateTime  @default(now())
+
+  film            Film      @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@unique([filmId, recommendedFilmId])
+  @@index([filmId])
+}
+
+model TranscodingJob {
+  id              String              @id @default(cuid())
+  filmId          String
+  status          TranscodingStatus   @default(PENDING)
+  inputPath       String
+  outputPath      String?
+  resolution      String[]
+  format          String              @default("hls")
+  progress        Float               @default(0)
+  errorMessage    String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  film            Film                @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@index([filmId])
+  @@index([status])
+}
+
+model AdCampaign {
+  id              String    @id @default(cuid())
+  name            String
+  advertiserId    String
+  videoUrl        String
+  clickUrl        String?
+  duration        Int
+  territories     String[]  @default(["GLOBAL"])
+  startDate       DateTime
+  endDate         DateTime?
+  budget          Float?
+  cpm             Float?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  impressions     AdImpression[]
+}
+
+model AdImpression {
+  id              String      @id @default(cuid())
+  campaignId      String
+  userId          String?
+  filmId          String?
+  position        String
+  clicked         Boolean     @default(false)
+  completed       Boolean     @default(false)
+  country         String?
+  createdAt       DateTime    @default(now())
+
+  campaign        AdCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+model NFTEdition {
+  id              String    @id @default(cuid())
+  filmId          String
+  tokenId         String?   @unique
+  chainId         String
+  contractAddress String
+  editionNumber   Int
+  totalEditions   Int
+  metadata        Json
+  price           Float?
+  currency        String    @default("FLIX")
+  mintedAt        DateTime?
+  ownerAddress    String?
+  createdAt       DateTime  @default(now())
+
+  film            Film      @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@index([filmId])
+  @@index([tokenId])
+}
+
+model Coupon {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  description     String?
+  discountType    String
+  discountValue   Float
+  maxUses         Int?
+  usedCount       Int       @default(0)
+  validFrom       DateTime
+  validUntil      DateTime?
+  isActive        Boolean   @default(true)
+  applicableTo    String[]
+  createdAt       DateTime  @default(now())
+
+  @@index([code])
+}
+
+model Notification {
+  id              String    @id @default(cuid())
+  userId          String
+  type            String
+  title           String
+  message         String    @db.Text
+  data            Json?
+  read            Boolean   @default(false)
+  sentAt          DateTime  @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
