@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ClientBody from "./ClientBody";
 import Script from "next/script";
+import AdminLayout from "./AdminLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,7 +32,9 @@ export default function RootLayout({
           crossOrigin="anonymous"
           src="//unpkg.com/same-runtime/dist/index.global.js"
         />
-        <ClientBody>{children}</ClientBody>
+        <ClientBody>
+          <AdminLayout>{children}</AdminLayout>
+        </ClientBody>
       </body>
     </html>
   );
