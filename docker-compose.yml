@@ -1,0 +1,211 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: thewans-postgres
+    environment:
+      POSTGRES_USER: thewans
+      POSTGRES_PASSWORD: thewans_password
+      POSTGRES_DB: thewans
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thewans"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: thewans-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Identity Service
+  identity-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.identity
+    container_name: thewans-identity
+    environment:
+      DATABASE_URL: postgresql://thewans:thewans_password@postgres:5432/thewans
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-secret-key-change-in-production
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Catalog Service
+  catalog-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.catalog
+    container_name: thewans-catalog
+    environment:
+      DATABASE_URL: postgresql://thewans:thewans_password@postgres:5432/thewans
+      REDIS_URL: redis://redis:6379
+      PORT: 3002
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Rights Service
+  rights-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.rights
+    container_name: thewans-rights
+    environment:
+      DATABASE_URL: postgresql://thewans:thewans_password@postgres:5432/thewans
+      REDIS_URL: redis://redis:6379
+      PORT: 3003
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Payment Service
+  payment-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.payment
+    container_name: thewans-payment
+    environment:
+      DATABASE_URL: postgresql://thewans:thewans_password@postgres:5432/thewans
+      REDIS_URL: redis://redis:6379
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      PORT: 3004
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Playback Service
+  playback-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.playback
+    container_name: thewans-playback
+    environment:
+      DATABASE_URL: postgresql://thewans:thewans_password@postgres:5432/thewans
+      REDIS_URL: redis://redis:6379
+      DRM_LICENSE_URL: ${DRM_LICENSE_URL}
+      CDN_URL: ${CDN_URL}
+      PORT: 3005
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Web Application
+  web-app:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.web
+    container_name: thewans-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_IDENTITY_URL: http://localhost:3001
+      NEXT_PUBLIC_CATALOG_URL: http://localhost:3002
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - identity-service
+      - catalog-service
+    restart: unless-stopped
+
+  # Admin Console
+  admin-app:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.admin
+    container_name: thewans-admin
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      PORT: 3020
+    ports:
+      - "3020:3020"
+    depends_on:
+      - identity-service
+      - catalog-service
+    restart: unless-stopped
+
+  # Creator Portal
+  creator-app:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.creator
+    container_name: thewans-creator
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      PORT: 3010
+    ports:
+      - "3010:3010"
+    depends_on:
+      - identity-service
+      - catalog-service
+    restart: unless-stopped
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: thewans-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  default:
+    name: thewans-network

@@ -1,0 +1,33 @@
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+# Install dependencies
+COPY package.json bun.lock* ./
+COPY packages/database/package.json ./packages/database/
+COPY packages/shared/package.json ./packages/shared/
+COPY services/identity/package.json ./services/identity/
+RUN bun install --frozen-lockfile
+
+# Copy source files
+COPY packages/ ./packages/
+COPY services/identity/ ./services/identity/
+
+# Generate Prisma client
+WORKDIR /app/packages/database
+RUN bunx prisma generate
+
+# Build service
+WORKDIR /app/services/identity
+RUN bun run build
+
+# Production stage
+FROM oven/bun:1-slim
+WORKDIR /app
+
+COPY --from=base /app/services/identity/dist ./dist
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/packages ./packages
+
+EXPOSE 3001
+
+CMD ["bun", "dist/index.js"]

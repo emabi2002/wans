@@ -1,0 +1,13 @@
+{
+  "name": "@the-wans/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "build": "echo 'No build needed for shared package'"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  }
+}

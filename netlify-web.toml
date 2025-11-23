@@ -1,0 +1,24 @@
+# Netlify Configuration for THE WANS Platform
+# Next.js 15 Deployment
+
+[build]
+  base = "."
+  command = "bun install && cd apps/web && bun run build"
+  publish = "apps/web/.next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  BUN_VERSION = "1.0.0"
+  NODE_ENV = "production"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
